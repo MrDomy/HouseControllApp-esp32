@@ -2,6 +2,11 @@ package com.example.makarovhouse.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+val BrandBlack = Color(0xFF111111)
+val BrandWhite = Color(0xFFFFFFFF)
+val BrandGrayLight = Color(0xFFF5F5F5)
+val BrandGrayDark = Color(0xFF555555)
+
 val Purple80 = Color(0xFFD0BCFF)
 val PurpleGrey80 = Color(0xFFCCC2DC)
 val Pink80 = Color(0xFFEFB8C8)

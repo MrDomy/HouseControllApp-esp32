@@ -27,6 +27,10 @@ class ControlManager : ViewModel() {
     private val _uiState = MutableStateFlow(ControlUiState())
     val uiState: StateFlow<ControlUiState> = _uiState.asStateFlow()
 
+    init {
+        syncStatus() // Синхронизируем UI с ESP32 сразу при запуске
+    }
+
     fun updateHost(host: String) {
         _uiState.update { it.copy(esp32Host = host) }
     }
@@ -81,9 +85,15 @@ class ControlManager : ViewModel() {
     }
 
     fun setDoorState(open: Boolean) {
-        val stateStr = if (open) "1" else "0"
-        sendCommand("DOOR:$stateStr") {
-            _uiState.update { it.copy(isDoorOpen = open) }
+        val cmd = if (open) "DOOR:1" else "DOOR:0"
+        sendCommand(cmd) {
+            _uiState.update { state -> 
+                state.copy(
+                    isDoorOpen = open,
+                    isSecurityMode = false,
+                    isEmergencyMode = false
+                ) 
+            }
         }
     }
 
@@ -97,7 +107,7 @@ class ControlManager : ViewModel() {
     fun setDiscoMode(enabled: Boolean) {
         val cmd = if (enabled) "MODE:DISCO" else "MODE:MANUAL"
         sendCommand(cmd) {
-            _uiState.update { it.copy(isDiscoMode = enabled, isEmergencyMode = false) }
+            _uiState.update { it.copy(isDiscoMode = enabled, isEmergencyMode = false, isSecurityMode = false) }
         }
     }
 
@@ -122,7 +132,8 @@ class ControlManager : ViewModel() {
                 state.copy(
                     isSecurityMode = enabled, 
                     isDiscoMode = false,
-                    isEmergencyMode = false
+                    isEmergencyMode = false,
+                    isDoorOpen = if (enabled) true else state.isDoorOpen
                 ) 
             }
         }
@@ -131,23 +142,25 @@ class ControlManager : ViewModel() {
     fun setAllLedsColor(colorHex: String) {
         sendCommand("LED:ALL:HEX:${colorHex.removePrefix("#")}") {
             _uiState.update {
-                it.copy(ledColors = List(17) { colorHex }, isDiscoMode = false)
+                it.copy(
+                    ledColors = List(17) { colorHex },
+                    isDiscoMode = false
+                )
             }
         }
     }
 
-    fun setGroupColor(groupNum: Int, colorHex: String) {
-        // groupNum 1, 2, 3
-        sendCommand("LED:G$groupNum:HEX:${colorHex.removePrefix("#")}") {
+    fun setGroupColor(groupId: Int, colorHex: String) {
+        sendCommand("LED:G$groupId:HEX:${colorHex.removePrefix("#")}") {
             _uiState.update { state ->
                 val newColors = state.ledColors.toMutableList()
-                val (start, end) = when(groupNum) {
-                    1 -> Pair(0, 6)
-                    2 -> Pair(6, 12)
-                    3 -> Pair(12, 17)
-                    else -> Pair(0, 0)
+                val range = when (groupId) {
+                    1 -> 0..5
+                    2 -> 6..11
+                    3 -> 12..16
+                    else -> return@update state
                 }
-                for (i in start until end) {
+                for (i in range) {
                     newColors[i] = colorHex
                 }
                 state.copy(ledColors = newColors, isDiscoMode = false)
@@ -159,7 +172,9 @@ class ControlManager : ViewModel() {
         sendCommand("LED:$index:HEX:${colorHex.removePrefix("#")}") {
             _uiState.update { state ->
                 val newColors = state.ledColors.toMutableList()
-                newColors[index] = colorHex
+                if (index in newColors.indices) {
+                    newColors[index] = colorHex
+                }
                 state.copy(ledColors = newColors, isDiscoMode = false)
             }
         }

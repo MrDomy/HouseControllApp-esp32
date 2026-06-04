@@ -50,4 +50,4 @@ jobs:
         libraries: |
           - name: Adafruit NeoPixel
         sketch-paths: |
-          - esp32_firmware/esp32_makarov_house.ino
+          - esp32_firmware/esp32_firmware.ino

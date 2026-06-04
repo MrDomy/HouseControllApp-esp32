@@ -19,3 +19,6 @@ app/build/
 
 # ESP32
 esp32_firmware/build/
+
+# Local Docs
+Full_Code_Explanation.md

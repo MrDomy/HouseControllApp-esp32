@@ -13,7 +13,11 @@ WebServer server(80);
 #define LED_COUNT 17
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
-uint32_t ledColors[LED_COUNT]; 
+bool isSecurityMode = false;   // Флаг режима охраны
+
+unsigned long lastDiscoTime = 0; // Таймер для дискотеки
+
+uint32_t ledColors[LED_COUNT]; // Базовые цвета светодиодов
 
 // --- Настройки поршня (L298N) ---
 #define L298N_IN1 25
@@ -30,10 +34,13 @@ int flashlightState = 0; // 0 - Выкл, 1 - Вкл
 int doorState = 0; 
 bool isDiscoMode = false;
 bool isEmergencyMode = false;
-bool isSecurityMode = false;
-unsigned long lastDiscoTime = 0;
 unsigned long lastEmergencyTime = 0;
 bool emergencyBlinkState = false;
+
+// Безопасность мотора двери
+bool isDoorMoving = false;
+unsigned long doorMoveStartTime = 0;
+const unsigned long DOOR_MOVE_DURATION = 2500; // 2.5 секунды на движение поршня
 
 void applyLeds() {
   if (isDiscoMode || isEmergencyMode || isSecurityMode) return; // Не переопределяем цвета извне
@@ -54,6 +61,10 @@ void applyDoorState() {
     digitalWrite(L298N_IN1, LOW);
     digitalWrite(L298N_IN2, LOW);
   }
+  
+  // Включаем защитный таймер (чтобы мотор не сгорел)
+  isDoorMoving = true;
+  doorMoveStartTime = millis();
 }
 
 // Парсинг HEX, например: #FF0000 -> 16711680 (uint32_t)
@@ -81,6 +92,8 @@ void applyCommand(const String& cmd) {
     isSecurityMode = true;
     isEmergencyMode = false;
     isDiscoMode = false;
+    doorState = 1; // Открыть дверь
+    applyDoorState();
     // Включаем все светодиоды зеленым цветом
     for (int i = 0; i < LED_COUNT; i++) {
       strip.setPixelColor(i, strip.Color(0, 255, 0));
@@ -95,24 +108,26 @@ void applyCommand(const String& cmd) {
     return;
   }
 
-  isDiscoMode = false; // Любая ручная команда отключает спецрежимы
-  isEmergencyMode = false;
-  isSecurityMode = false;
-
   if (cmd.startsWith("DOOR:")) {
     doorState = cmd.substring(5).toInt();
     applyDoorState();
+    // Отключаем охрану и тревогу при ручном управлении дверью
+    if (isSecurityMode || isEmergencyMode) {
+      isSecurityMode = false;
+      isEmergencyMode = false;
+      applyLeds();
+    }
   } 
   else if (cmd.startsWith("FLASHLIGHT:")) {
     flashlightState = cmd.substring(11).toInt();
-    // Большинство модулей реле включаются низким уровнем (LOW), но если у вас включается высоким, поменяйте LOW и HIGH местами:
-    digitalWrite(RELAY_PIN, flashlightState == 1 ? HIGH : LOW);
+    digitalWrite(RELAY_PIN, flashlightState == 1 ? LOW : HIGH); // Инвертированная логика
   }
   else if (cmd.startsWith("LED:ALL:HEX:")) {
     uint32_t color = parseHex(cmd.substring(12));
     for (int i = 0; i < LED_COUNT; i++) {
       ledColors[i] = color;
     }
+    isDiscoMode = false;
     applyLeds();
   }
   else if (cmd.startsWith("LED:G")) {
@@ -134,6 +149,7 @@ void applyCommand(const String& cmd) {
       for (int i = startIdx; i < endIdx; i++) {
         ledColors[i] = color;
       }
+      isDiscoMode = false;
       applyLeds();
     }
   }
@@ -149,6 +165,7 @@ void applyCommand(const String& cmd) {
       uint32_t color = parseHex(hexStr);
       if (index >= 0 && index < LED_COUNT) {
         ledColors[index] = color;
+        isDiscoMode = false;
         applyLeds();
       }
     }
@@ -178,7 +195,7 @@ void handleStatus() {
   json += "\"security\":" + String(isSecurityMode ? "true" : "false") + ",";
   json += "\"colors\":[";
   for (int i = 0; i < LED_COUNT; i++) {
-    char hex[8];
+    char hex[16];
     sprintf(hex, "\"#%06X\"", ledColors[i] & 0xFFFFFF);
     json += String(hex);
     if (i < LED_COUNT - 1) json += ",";
@@ -197,7 +214,7 @@ void setup() {
   
   digitalWrite(L298N_IN1, LOW);
   digitalWrite(L298N_IN2, LOW);
-  digitalWrite(RELAY_PIN, LOW); // Выключаем реле при старте
+  digitalWrite(RELAY_PIN, HIGH); // Выключаем реле по умолчанию (обратная логика) // Выключаем реле при старте
 
   strip.begin();
   strip.setBrightness(60); // Ограничение яркости (около 25%) для предотвращения перезагрузок ESP32 по питанию (Brownout)
@@ -222,6 +239,13 @@ void setup() {
 void loop() {
   server.handleClient();
   
+  // Защитное отключение мотора двери через 2.5 секунды
+  if (isDoorMoving && (millis() - doorMoveStartTime > DOOR_MOVE_DURATION)) {
+    digitalWrite(L298N_IN1, LOW);
+    digitalWrite(L298N_IN2, LOW);
+    isDoorMoving = false;
+  }
+
   // Проверка ИК-датчика
   // Если датчик срабатывает (LOW) И включен режим охраны:
   if (isSecurityMode && digitalRead(IR_SENSOR_PIN) == LOW) {
@@ -251,7 +275,7 @@ void loop() {
       strip.show();
     }
   } else if (isEmergencyMode) {
-    if (millis() - lastEmergencyTime > 200) { // Мигание каждые 200мс
+    if (millis() - lastEmergencyTime > 150) { // Мигание каждые 200мс
       lastEmergencyTime = millis();
       emergencyBlinkState = !emergencyBlinkState;
       uint32_t color = emergencyBlinkState ? strip.Color(255, 0, 0) : strip.Color(0, 0, 0);
