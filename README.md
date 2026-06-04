@@ -42,7 +42,7 @@
 
 ---
 
-## 🛠 Установка и Запуск
+## Установка и Запуск
 
 ### ESP32 (Прошивка микроконтроллера)
 1. Откройте файл `esp32_firmware/esp32_firmware.ino` в Arduino IDE.
@@ -59,7 +59,7 @@
 
 ---
 
-## ⚙️ CI/CD (GitHub Actions)
+## CI/CD (GitHub Actions)
 В репозитории настроен Continuous Integration:
 При каждом пуше в ветку `main` GitHub Actions автоматически:
 1. Собирает готовый **APK-файл** приложения (доступен в Artifacts).
