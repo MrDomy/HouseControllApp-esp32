@@ -99,7 +99,7 @@ fun calculateColorFromOffset(offset: Offset, size: Float): String {
     if (saturation > 1f) saturation = 1f
     
     // Если нажали в самый центр - выключаем (черный цвет)
-    if (dist < size / 6f) {
+    if (dist < size / 12f) {
         return "#000000"
     }
     

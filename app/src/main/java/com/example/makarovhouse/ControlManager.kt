@@ -4,10 +4,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -27,6 +29,9 @@ class ControlManager : ViewModel() {
     private val _uiState = MutableStateFlow(ControlUiState())
     val uiState: StateFlow<ControlUiState> = _uiState.asStateFlow()
 
+    private var isSyncing = false
+    private var commandJob: Job? = null
+
     init {
         syncStatus() // Синхронизируем UI с ESP32 сразу при запуске
     }
@@ -38,10 +43,13 @@ class ControlManager : ViewModel() {
     fun syncStatus() {
         val host = _uiState.value.esp32Host
         if (host.isBlank()) return
+        if (isSyncing) return
+        isSyncing = true
 
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { Esp32HttpClient.fetchStatus(host) }
                 .onSuccess { response ->
+                    isSyncing = false
                     try {
                         val json = JSONObject(response)
                         val doorState = json.optInt("door", 0) == 1
@@ -74,6 +82,7 @@ class ControlManager : ViewModel() {
                     }
                 }
                 .onFailure { error ->
+                    isSyncing = false
                     _uiState.update {
                         it.copy(
                             isConnected = false,
@@ -187,18 +196,21 @@ class ControlManager : ViewModel() {
             return
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
+        commandJob?.cancel()
+        commandJob = viewModelScope.launch(Dispatchers.IO) {
             runCatching { Esp32HttpClient.sendCommand(host, command) }
                 .onSuccess {
                     _uiState.update { it.copy(isConnected = true, statusMessage = "Команда отправлена: $command") }
                     onSuccessLocalUpdate()
                 }
                 .onFailure { error ->
-                    _uiState.update {
-                        it.copy(
-                            isConnected = false,
-                            statusMessage = error.message ?: "Ошибка при отправке: $command"
-                        )
+                    if (isActive) {
+                        _uiState.update {
+                            it.copy(
+                                isConnected = false,
+                                statusMessage = error.message ?: "Ошибка при отправке: $command"
+                            )
+                        }
                     }
                 }
         }

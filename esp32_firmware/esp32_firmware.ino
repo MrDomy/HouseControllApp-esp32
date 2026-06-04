@@ -109,8 +109,11 @@ void applyCommand(const String& cmd) {
   }
 
   if (cmd.startsWith("DOOR:")) {
-    doorState = cmd.substring(5).toInt();
-    applyDoorState();
+    int newDoorState = cmd.substring(5).toInt();
+    if (newDoorState != doorState) {
+      doorState = newDoorState;
+      applyDoorState();
+    }
     // Отключаем охрану и тревогу при ручном управлении дверью
     if (isSecurityMode || isEmergencyMode) {
       isSecurityMode = false;
