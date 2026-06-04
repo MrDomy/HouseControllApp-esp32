@@ -1,4 +1,4 @@
-# Makarov House (Learn Up) 🏠✨
+# Makarov House
 
 Умный дом на базе ESP32 с управлением через Android-приложение (Jetpack Compose).
 Проект разработан в рамках финальной защиты.
