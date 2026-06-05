@@ -10,24 +10,40 @@ object Esp32HttpClient {
     private const val DEFAULT_TIMEOUT_MS = 3000
 
     suspend fun sendCommand(host: String, command: String): String {
-        return request(host, "/command?value=$command")
+        return request(host, "/command", "POST", "value=$command")
     }
 
     suspend fun fetchStatus(host: String): String {
         return request(host, "/status")
     }
 
-    private suspend fun request(host: String, path: String): String = withContext(Dispatchers.IO) {
+    private suspend fun request(
+        host: String,
+        path: String,
+        method: String = "GET",
+        postBody: String? = null
+    ): String = withContext(Dispatchers.IO) {
         val url = URL("http://$host$path")
         val connection = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
+            requestMethod = method
             connectTimeout = DEFAULT_TIMEOUT_MS
             readTimeout = DEFAULT_TIMEOUT_MS
             doInput = true
+            if (postBody != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            }
             useCaches = false
         }
 
         try {
+            if (postBody != null) {
+                connection.outputStream.use { os ->
+                    os.write(postBody.toByteArray(Charsets.UTF_8))
+                    os.flush()
+                }
+            }
+
             val responseCode = connection.responseCode
             val stream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()

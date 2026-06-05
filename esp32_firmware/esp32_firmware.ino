@@ -233,7 +233,7 @@ void setup() {
   Serial.println(IP);
 
   server.on("/ping", HTTP_GET, handlePing);
-  server.on("/command", HTTP_GET, handleCommand);
+  server.on("/command", HTTP_POST, handleCommand);
   server.on("/status", HTTP_GET, handleStatus);
   
   server.begin();
